@@ -41,8 +41,6 @@ class BiLSTMModel(nn.Module):
         embedded = self.embedding(x)
         lstm_out, _ = self.lstm(embedded)
         logits = self.fc(lstm_out)
-        print("\tIn Model: input size", x.size(),
-              "output size", logits.size())
         return logits
 
 # Initialize the model, loss function, and optimizer
