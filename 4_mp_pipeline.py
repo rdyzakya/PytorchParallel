@@ -7,6 +7,8 @@ from datasets import load_dataset
 from tqdm import tqdm
 from gpu import track_gpu_memory
 import time
+import json
+import os
 
 # Load the dataset
 dataset = load_dataset('wikitext', 'wikitext-2-raw-v1')
@@ -98,10 +100,20 @@ device = torch.device('cuda:1')
 # model.to(device)
 
 num_epochs = 3
+all_gpu_info = []
 start = time.time()
 for epoch in range(num_epochs):
     train_loss = train(model, train_dataloader, criterion, optimizer, device)
     print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}')
-    print("GPU Info :", track_gpu_memory())
+    gpu_info = track_gpu_memory()
+    print("GPU Info :", gpu_info)
+    all_gpu_info.append(gpu_info)
 end = time.time()
 print(f"Training for {num_epochs} done in {end - start} s")
+
+os.makedirs("./gpu_info", exist_ok=True)
+with open("./gpu_info/mp_pipeline.json", 'w') as fp:
+    json.dump({
+        "time" : end - start,
+        "gpu_info" : all_gpu_info
+    }, fp)
