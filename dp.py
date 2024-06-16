@@ -37,6 +37,7 @@ class BiLSTMModel(nn.Module):
         self.fc = nn.Linear(hidden_dim * 2, vocab_size)
 
     def forward(self, x):
+        x = x.long()
         embedded = self.embedding(x)
         lstm_out, _ = self.lstm(embedded)
         logits = self.fc(lstm_out)
