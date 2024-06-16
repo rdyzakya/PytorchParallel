@@ -41,8 +41,6 @@ class BiLSTMModel(nn.Module):
         embedded = self.embedding(x)
         lstm_out, _ = self.lstm(embedded)
         logits = self.fc(lstm_out)
-        print("\tIn Model: input size", x.size(),
-              "output size", logits.size())
         return logits
 
 # Initialize the model, loss function, and optimizer
@@ -97,4 +95,4 @@ for epoch in range(num_epochs):
     print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}')
     print("GPU Info :", track_gpu_memory())
 end = time.time()
-print(f"Training for {num_epochs} done in {start - end} s")
+print(f"Training for {num_epochs} done in {end - start} s")
