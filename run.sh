@@ -2,6 +2,6 @@
 
 for file in *.py; do
     if [ "$file" != "gpu.py" ]; then
-        python "$file"
+        CUDA_VISIbLE_DEVICES="6,7" python "$file"
     fi
 done
