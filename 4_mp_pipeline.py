@@ -48,7 +48,7 @@ class BiLSTMModel(nn.Module):
 
         for s_next in splits:
             # A. ``s_prev`` runs on ``cuda:1``
-            s_prev = self.lstm(s_prev.to("cuda:1"))
+            s_prev, _ = self.lstm(s_prev.to("cuda:1"))
             ret.append(self.fc(s_prev.to("cuda:1")))
 
             # B. ``s_next`` runs on ``cuda:0``, which can run concurrently with A
