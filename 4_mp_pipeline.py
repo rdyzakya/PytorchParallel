@@ -54,7 +54,10 @@ class BiLSTMModel(nn.Module):
             # B. ``s_next`` runs on ``cuda:0``, which can run concurrently with A
             s_prev = self.embedding(s_next.to("cuda:0"))
 
-        logits = torch.cat(ret)
+        s_prev, _ = self.lstm(s_prev.to("cuda:1"))
+        ret.append(self.fc(s_prev.to("cuda:1")))
+
+        logits = torch.vstack(ret)
         return logits
 
 # Initialize the model, loss function, and optimizer
