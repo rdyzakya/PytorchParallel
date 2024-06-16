@@ -30,17 +30,29 @@ train_dataloader = DataLoader(tokenized_dataset, batch_size=8, shuffle=True, col
 
 # Define the BiLSTM model
 class BiLSTMModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers, split_size=4):
         super(BiLSTMModel, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim).to("cuda:0")
         self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers, bidirectional=True, batch_first=True).to("cuda:1")
-        self.fc = nn.Linear(hidden_dim * 2, vocab_size).to("cuda:0")
+        self.fc = nn.Linear(hidden_dim * 2, vocab_size).to("cuda:1")
+        self.split_size = split_size
 
     def forward(self, x):
         x = x.long()
-        embedded = self.embedding(x.to("cuda:0"))
-        lstm_out, _ = self.lstm(embedded.to("cuda:1"))
-        logits = self.fc(lstm_out.to("cuda:0"))
+        splits = iter(x.split(self.split_size, dim=0))
+        s_next = next(splits)
+        s_prev = self.embedding(s_next.to("cuda:0"))
+        ret = []
+
+        for s_next in splits:
+            # A. ``s_prev`` runs on ``cuda:1``
+            s_prev = self.lstm(s_prev.to("cuda:1"))
+            ret.append(self.fc(s_prev.to("cuda:1")))
+
+            # B. ``s_next`` runs on ``cuda:0``, which can run concurrently with A
+            s_prev = self.embedding(s_next.to("cuda:0"))
+
+        logits = torch.cat(ret)
         return logits
 
 # Initialize the model, loss function, and optimizer
@@ -82,7 +94,7 @@ def evaluate(model, dataloader, criterion, device):
     return total_loss / len(dataloader)
 
 # Training loop
-device = torch.device('cuda:0')
+device = torch.device('cuda:1')
 # model.to(device)
 
 num_epochs = 3
