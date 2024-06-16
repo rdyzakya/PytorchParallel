@@ -6,6 +6,7 @@ from transformers import AutoTokenizer, DataCollatorForLanguageModeling
 from datasets import load_dataset
 from tqdm import tqdm
 from gpu import track_gpu_memory
+import time
 
 # Load the dataset
 dataset = load_dataset('wikitext', 'wikitext-2-raw-v1')
@@ -80,11 +81,14 @@ def evaluate(model, dataloader, criterion, device):
     return total_loss / len(dataloader)
 
 # Training loop
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 num_epochs = 3
+start = time.time()
 for epoch in range(num_epochs):
     train_loss = train(model, train_dataloader, criterion, optimizer, device)
     print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}')
     print("GPU Info :", track_gpu_memory())
+end = time.time()
+print(f"Training for {num_epochs} done in {start - end} s")

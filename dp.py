@@ -1,21 +1,16 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, DataCollatorForLanguageModeling
 from datasets import load_dataset
 from tqdm import tqdm
-import os
 from gpu import track_gpu_memory
-
-# Initialize distributed training environment
-os.environ['MASTER_ADDR'] = 'localhost'
-os.environ['MASTER_PORT'] = '12355'
-torch.distributed.init_process_group("nccl", rank=0, world_size=1)
+import time
 
 # Load the dataset
 dataset = load_dataset('wikitext', 'wikitext-2-raw-v1')
-dataset = dataset['train'].select(range(1000))  # Use only 1000 texts
+dataset = dataset['train'].select(range(1000))  # Use only 100 texts
 
 # Initialize the tokenizer
 tokenizer = AutoTokenizer.from_pretrained('gpt2')
@@ -53,9 +48,7 @@ embedding_dim = 256
 hidden_dim = 512
 num_layers = 2
 
-model = BiLSTMModel(vocab_size, embedding_dim, hidden_dim, num_layers).cuda()
-model = nn.parallel.DistributedDataParallel(model)
-
+model = BiLSTMModel(vocab_size, embedding_dim, hidden_dim, num_layers)
 criterion = nn.CrossEntropyLoss(ignore_index=-100)
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
@@ -88,16 +81,17 @@ def evaluate(model, dataloader, criterion, device):
     return total_loss / len(dataloader)
 
 # Training loop
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+if torch.cuda.device_count() > 1:
+  print("Let's use", torch.cuda.device_count(), "GPUs!")
+  model = nn.DataParallel(model)
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+model.to(device)
 
 num_epochs = 3
+start = time.time()
 for epoch in range(num_epochs):
     train_loss = train(model, train_dataloader, criterion, optimizer, device)
     print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}')
     print("GPU Info :", track_gpu_memory())
-
-# Save the model
-torch.save(model.module.state_dict(), 'bilstm_language_model_ddp.pth')
-
-# Cleanup
-torch.distributed.destroy_process_group()
+end = time.time()
+print(f"Training for {num_epochs} done in {start - end} s")
