@@ -111,7 +111,7 @@ def main(rank, world_size):
 
     if rank == 0:
         os.makedirs("./gpu_info", exist_ok=True)
-        with open("./gpu_info/normal.json", 'w') as fp:
+        with open("./gpu_info/ddp.json", 'w') as fp:
             json.dump({
                 "time" : end - start,
                 "gpu_info" : all_gpu_info
