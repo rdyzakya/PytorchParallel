@@ -9,10 +9,9 @@ from gpu import track_gpu_memory
 import time
 import json
 import os
-import warnings
 
-warnings.simplefilter("ignore")
-
+if "TRANSFORMERS_CACHE" in os.environ.keys():
+    del os.environ["TRANSFORMERS_CACHE"]
 
 # Load the dataset
 dataset = load_dataset('wikitext', 'wikitext-2-raw-v1')
@@ -63,6 +62,11 @@ class BiLSTMModel(nn.Module):
 
         logits = torch.vstack(ret)
         return logits
+
+    @property
+    def device(self):
+        devices = {param.device for param in self.parameters()}
+        return list(devices)
 
 # Initialize the model, loss function, and optimizer
 vocab_size = tokenizer.vocab_size

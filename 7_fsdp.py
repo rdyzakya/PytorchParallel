@@ -9,10 +9,9 @@ from gpu import track_gpu_memory
 import time
 import json
 import os
-import warnings
 
-warnings.simplefilter("ignore")
-
+if "TRANSFORMERS_CACHE" in os.environ.keys():
+    del os.environ["TRANSFORMERS_CACHE"]
 
 # IMPORT NECESSARY LIBRARIES
 from torch.optim.lr_scheduler import StepLR
@@ -89,6 +88,11 @@ def main(rank, world_size):
             lstm_out, _ = self.lstm(embedded)
             logits = self.fc(lstm_out)
             return logits
+        
+        @property
+        def device(self):
+            devices = {param.device for param in self.parameters()}
+            return list(devices)
 
     # Initialize the model, loss function, and optimizer
     vocab_size = tokenizer.vocab_size
