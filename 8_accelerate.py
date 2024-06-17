@@ -84,7 +84,7 @@ def train(model, dataloader, criterion, optimizer):
         outputs = model(input_ids)
         loss = criterion(outputs.view(-1, vocab_size), labels.view(-1))
         # loss.backward()
-        accelerator.backward()
+        accelerator.backward(loss)
         optimizer.step()
         total_loss += loss.item()
     return total_loss / len(dataloader)
