@@ -10,23 +10,41 @@ import time
 import json
 import os
 
-# IMPORT DDP RELATED LIBRARIES
-import torch.multiprocessing as mp
-from torch.utils.data.distributed import DistributedSampler
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.distributed import init_process_group, destroy_process_group
+# IMPORT NECESSARY LIBRARIES
+from torch.optim.lr_scheduler import StepLR
 
-# DDP SETUP FUNCTION
-def ddp_setup(rank, world_size):
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12355"
-    init_process_group(backend="nccl", rank=rank, world_size=world_size)
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp.fully_sharded_data_parallel import (
+    CPUOffload,
+    BackwardPrefetch,
+)
+from torch.distributed.fsdp.wrap import (
+    size_based_auto_wrap_policy, # default_auto_wrap_policy for earlier version before v1.12
+    enable_wrap,
+    wrap,
+)
+import functools
+
+# DISTRIBUTED TRAINING SETUP
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
+    # initialize the process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
     torch.cuda.set_device(rank)
 
-# WRAP MAIN FUNCTION
+def cleanup():
+    dist.destroy_process_group()
+
 def main(rank, world_size):
-    # DDP SETUP
-    ddp_setup(rank, world_size)
+    # SETUP
+    setup(rank, world_size)
     # Load the dataset
     dataset = load_dataset('wikitext', 'wikitext-2-raw-v1')
     dataset = dataset['train'].select(range(1000))  # Use only 100 texts
@@ -47,10 +65,11 @@ def main(rank, world_size):
     # Create dataloaders
     train_dataloader = DataLoader(tokenized_dataset, 
                                   batch_size=8, 
-                                  shuffle=False, 
+                                  shuffle=False,
                                   collate_fn=data_collator,
-                                  pin_memory=True,
-                                  sampler=DistributedSampler(tokenized_dataset)) # ADD DISTRIBUTED DATASAMPLER
+                                  pin_memory=True, 
+                                  sampler=DistributedSampler(tokenized_dataset),
+                                  num_workers=2)
 
     # Define the BiLSTM model
     class BiLSTMModel(nn.Module):
@@ -73,14 +92,28 @@ def main(rank, world_size):
     hidden_dim = 512
     num_layers = 2
 
+    my_auto_wrap_policy = functools.partial(
+        size_based_auto_wrap_policy, min_num_params=2000
+    )
+    # torch.cuda.set_device(rank)
+
     model = BiLSTMModel(vocab_size, embedding_dim, hidden_dim, num_layers)
+    ## UPDATED : WRAP
+    model = model.to(rank)
+    model = FSDP(model,
+                 auto_wrap_policy=my_auto_wrap_policy)
+                # cpu_offload=CPUOffload(offload_params=True))
     criterion = nn.CrossEntropyLoss(ignore_index=-100)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
+    scheduler = StepLR(optimizer, step_size=1)
 
     # Training function
     def train(model, dataloader, criterion, optimizer, device):
         model.train()
-        total_loss = 0
+        ## PREVIOUSLY
+        # total_loss = 0
+        ## UPDATED
+        ddp_loss = torch.zeros(2).to(device)
         for batch in tqdm(dataloader, desc="Training"):
             input_ids = batch['input_ids'].to(device)
             labels = batch['labels'].to(device)
@@ -89,39 +122,54 @@ def main(rank, world_size):
             loss = criterion(outputs.view(-1, vocab_size), labels.view(-1))
             loss.backward()
             optimizer.step()
-            total_loss += loss.item()
-        return total_loss / len(dataloader)
+            ## PREVIOUSLY
+            # total_loss += loss.item()
+            ## UPDATED
+            ddp_loss[0] += loss.item()
+            ddp_loss[1] += len(input_ids)
+        
+        dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
+        ## PREVIOUS
+        # return total_loss / len(dataloader)
+        ## UPDATED
+        return ddp_loss[0] / ddp_loss[1]
 
     # Training loop
-    device = rank
-    model.to(device)
-    model = DDP(model, device_ids=[rank]) # WRAP MODEL USING DDP
+    ## PREVIOUS
+    # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    # model.to(device)
 
     num_epochs = 3
     all_gpu_info = []
     start = time.time()
     for epoch in range(num_epochs):
         train_dataloader.sampler.set_epoch(epoch) # SET DATA LOADER EPOCH
-        train_loss = train(model, train_dataloader, criterion, optimizer, device)
+        train_loss = train(model, train_dataloader, criterion, optimizer, device=rank)
+        scheduler.step()
         gpu_info = track_gpu_memory()
+        all_gpu_info.append(gpu_info)
         if rank == 0:
-            all_gpu_info.append(gpu_info)
             print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}')
             print("GPU Info :", gpu_info)
     end = time.time()
     if rank == 0:
         print(f"Training for {num_epochs} done in {end - start} s")
 
+    os.makedirs("./gpu_info", exist_ok=True)
+    with open("./gpu_info/normal.json", 'w') as fp:
+        json.dump({
+            "time" : end - start,
+            "gpu_info" : all_gpu_info
+        }, fp)
+
     if rank == 0:
-        os.makedirs("./gpu_info", exist_ok=True)
-        with open("./gpu_info/ddp.json", 'w') as fp:
-            json.dump({
-                "time" : end - start,
-                "gpu_info" : all_gpu_info
-            }, fp)
-        # for saving model, use model.module.state_dict() not model.state_dict()
+        dist.barrier()
+        states = model.state_dict()
+        if rank == 0:
+            os.makedirs("./model", exist_ok=True)
+            torch.save(states, "./model/model.pt")
     
-    destroy_process_group() # DESTROY PROCESS GROUP
+    cleanup()
 
 if __name__ == "__main__":
     world_size = torch.cuda.device_count() # GET THE WORLD SIZE
