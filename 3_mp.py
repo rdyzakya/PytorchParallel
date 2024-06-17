@@ -9,6 +9,10 @@ from gpu import track_gpu_memory
 import time
 import json
 import os
+import warnings
+
+warnings.simplefilter("ignore")
+
 
 # Load the dataset
 dataset = load_dataset('wikitext', 'wikitext-2-raw-v1')
@@ -72,6 +76,7 @@ def train(model, dataloader, criterion, optimizer, device):
 
 # Training loop
 device = torch.device('cuda:1')
+print("My model device is :", model.device)
 # model.to(device)
 
 num_epochs = 3

@@ -9,6 +9,10 @@ from gpu import track_gpu_memory
 import time
 import json
 import os
+import warnings
+
+warnings.simplefilter("ignore")
+
 
 # IMPORT NECESSARY LIBRARIES
 from torch.optim.lr_scheduler import StepLR
@@ -103,6 +107,7 @@ def main(rank, world_size):
     model = FSDP(model,
                  auto_wrap_policy=my_auto_wrap_policy)
                 # cpu_offload=CPUOffload(offload_params=True))
+    print("My model device is :", model.device)
     criterion = nn.CrossEntropyLoss(ignore_index=-100)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     scheduler = StepLR(optimizer, step_size=1)
@@ -156,18 +161,18 @@ def main(rank, world_size):
         print(f"Training for {num_epochs} done in {end - start} s")
 
     os.makedirs("./gpu_info", exist_ok=True)
-    with open("./gpu_info/normal.json", 'w') as fp:
+    with open("./gpu_info/fsdp.json", 'w') as fp:
         json.dump({
             "time" : end - start,
             "gpu_info" : all_gpu_info
         }, fp)
 
-    if rank == 0:
-        dist.barrier()
-        states = model.state_dict()
-        if rank == 0:
-            os.makedirs("./model", exist_ok=True)
-            torch.save(states, "./model/model.pt")
+    # if rank == 0:
+    #     dist.barrier() --> BUG STUCK, SEMAPHORE APALAH
+    #     states = model.state_dict()
+    #     if rank == 0:
+    #         os.makedirs("./model", exist_ok=True)
+    #         torch.save(states, "./model/model.pt")
     
     cleanup()
 

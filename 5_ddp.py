@@ -9,6 +9,10 @@ from gpu import track_gpu_memory
 import time
 import json
 import os
+import warnings
+
+warnings.simplefilter("ignore")
+
 
 # IMPORT DDP RELATED LIBRARIES
 import torch.multiprocessing as mp
@@ -96,6 +100,7 @@ def main(rank, world_size):
     device = rank
     model.to(device)
     model = DDP(model, device_ids=[rank]) # WRAP MODEL USING DDP
+    print("My model device is :", model.device)
 
     num_epochs = 3
     all_gpu_info = []

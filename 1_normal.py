@@ -9,6 +9,10 @@ from gpu import track_gpu_memory
 import time
 import json
 import os
+import warnings
+
+warnings.simplefilter("ignore")
+
 
 # Load the dataset
 dataset = load_dataset('wikitext', 'wikitext-2-raw-v1')
@@ -73,6 +77,7 @@ def train(model, dataloader, criterion, optimizer, device):
 # Training loop
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
+print("My model device is :", model.device)
 
 num_epochs = 3
 all_gpu_info = []
