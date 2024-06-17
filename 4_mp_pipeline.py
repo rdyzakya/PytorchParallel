@@ -85,19 +85,6 @@ def train(model, dataloader, criterion, optimizer, device):
         total_loss += loss.item()
     return total_loss / len(dataloader)
 
-# Evaluation function
-def evaluate(model, dataloader, criterion, device):
-    model.eval()
-    total_loss = 0
-    with torch.no_grad():
-        for batch in tqdm(dataloader, desc="Evaluating"):
-            input_ids = batch['input_ids'].to(device)
-            labels = batch['labels'].to(device)
-            outputs = model(input_ids)
-            loss = criterion(outputs.view(-1, vocab_size), labels.view(-1))
-            total_loss += loss.item()
-    return total_loss / len(dataloader)
-
 # Training loop
 device = torch.device('cuda:1')
 # model.to(device)
