@@ -71,7 +71,6 @@ def main(rank, world_size):
     num_layers = 2
 
     model = BiLSTMModel(vocab_size, embedding_dim, hidden_dim, num_layers)
-    model = DDP(model, device_ids=[rank])
     criterion = nn.CrossEntropyLoss(ignore_index=-100)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
@@ -93,11 +92,13 @@ def main(rank, world_size):
     # Training loop
     device = rank
     model.to(device)
+    model = DDP(model, device_ids=[rank])
 
     num_epochs = 3
     all_gpu_info = []
     start = time.time()
     for epoch in range(num_epochs):
+        train_dataloader.sampler.set_epoch(epoch)
         train_loss = train(model, train_dataloader, criterion, optimizer, device)
         gpu_info = track_gpu_memory()
         if rank == 0:
